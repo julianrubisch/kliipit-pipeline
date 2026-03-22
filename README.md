@@ -326,7 +326,7 @@ https://github.com/user-attachments/assets/5924f65b-5520-4853-9d4c-52583cd2431f
 
 
 ### `shaders/rutt_etra.frag` ([sample](samples/rutt_etra.mp4))
-Rutt-Etra video synthesizer: horizontal scan lines are vertically displaced by image brightness, creating a 3D wireframe look. Bass widens line spacing for a heavier feel, mids thicken lines and speed up scroll, treble boosts color intensity. Loudness fills the gaps between scan lines with the underlying image.
+Rutt-Etra video synthesizer, adapted from [DdXfRj](https://www.shadertoy.com/view/DdXfRj) on Shadertoy. Horizontal scan lines are vertically displaced by image brightness, creating a 3D wireframe look. Bass widens line spacing for a heavier feel, mids thicken lines and speed up scroll, treble boosts color intensity. Loudness fills the gaps between scan lines with the underlying image.
 
 
 
@@ -428,6 +428,7 @@ The main bottleneck is PNG export — `LoadImageFromTexture` + `ExportImage` per
 
 ## Acknowledgments
 
+- **Rutt-Etra** — adapted from [DdXfRj](https://www.shadertoy.com/view/DdXfRj) on Shadertoy
 - **VCR Distortion** — adapted from [ldjGzV](https://www.shadertoy.com/view/ldjGzV) by Tsoding on Shadertoy
 - **Pixel sorting with vector field** — ported from [3dXSzs](https://www.shadertoy.com/view/3dXSzs) by ciphrd on Shadertoy (MIT license)
 

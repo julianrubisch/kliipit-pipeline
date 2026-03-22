@@ -1,8 +1,8 @@
 #version 330
 
 // Rutt-Etra — Audio-reactive horizontal scanline displacement effect
-// Inspired by the Rutt-Etra video synthesizer: horizontal scan lines
-// are vertically displaced by image brightness, creating a 3D wireframe look.
+// Adapted from Shadertoy "Rutt-Etra" (DdXfRj): https://www.shadertoy.com/view/DdXfRj
+// Horizontal scan lines are vertically displaced by image brightness, creating a 3D wireframe look.
 
 in vec2 fragTexCoord;
 in vec4 fragColor;

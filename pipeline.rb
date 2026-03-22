@@ -10,6 +10,7 @@ end
 
 require "raylib"
 require "tmpdir"
+require "tempfile"
 require "fileutils"
 
 # Load raylib native library
@@ -89,7 +90,8 @@ end
 # --- Step 1: Audio analysis via sox ---
 duration = `soxi -D "#{AUDIO_PATH}"`.strip.to_f
 total_frames = (duration * FPS).to_i
-audio_data_path = File.join(SCRIPT_DIR, "audio_data.png")
+audio_data_file = Tempfile.new(["audio_data", ".png"])
+audio_data_path = audio_data_file.path
 
 # Apply frame/duration limits (these limit the *duration*, not the absolute end)
 if options[:max_frames]
@@ -125,6 +127,13 @@ system("sox", AUDIO_PATH, "-n", "remix", "-", "spectrogram",
 
 puts "    Created audio_data.png"
 
+# Generate raw PCM waveform data for waveform texture
+waveform_raw_file = Tempfile.new(["waveform_raw", ".pcm"])
+waveform_raw_path = waveform_raw_file.path
+puts "    Extracting raw PCM for waveform texture..."
+system("sox", AUDIO_PATH, "-t", "raw", "-e", "signed-integer", "-b", "16",
+       "-c", "1", "-r", "44100", waveform_raw_path, "remix", "-", exception: true)
+
 preview_duration = 2.0
 preview_frames = (preview_duration * FPS).to_i
 
@@ -143,6 +152,58 @@ SetConfigFlags(FLAG_WINDOW_HIDDEN)
 SetTraceLogLevel(LOG_ERROR)
 InitWindow(WIDTH, HEIGHT, "pipeline")
 SetTargetFPS(9999)
+
+# Build waveform texture from raw PCM data
+puts "    Building waveform texture..."
+waveform_tex_height = 1024
+raw_pcm = File.binread(waveform_raw_path)
+pcm_samples = raw_pcm.unpack("s<*")  # signed 16-bit LE
+total_pcm_samples = pcm_samples.length
+sample_rate = 44100
+
+# Width matches spectrogram so time axes align
+waveform_tex_width = (duration * spectrogram_pps).ceil
+waveform_tex_width = [waveform_tex_width, max_texture_width].min
+
+pixels = Array.new(waveform_tex_width * waveform_tex_height, 128)
+waveform_tex_width.times do |col|
+  # Time range for this column
+  t_start = (col.to_f / waveform_tex_width) * total_pcm_samples
+  t_end = ((col + 1).to_f / waveform_tex_width) * total_pcm_samples
+  slice_start = t_start.to_i
+  slice_end = [t_end.to_i, total_pcm_samples].min
+  slice_len = slice_end - slice_start
+
+  next if slice_len <= 0
+
+  waveform_tex_height.times do |row|
+    # Map row to a sample index within this time slice
+    sample_idx = slice_start + (row.to_f / waveform_tex_height * slice_len).to_i
+    sample_idx = [sample_idx, total_pcm_samples - 1].min
+    val = pcm_samples[sample_idx]
+    # Map [-32768, 32767] → [0, 255], 128 = zero crossing
+    byte = ((val + 32768) * 255 / 65535.0).round
+    byte = [[byte, 0].max, 255].min
+    pixels[col + row * waveform_tex_width] = byte
+  end
+end
+
+# Create raylib Image and load as texture
+waveform_pixel_data = FFI::MemoryPointer.new(:uint8, pixels.length)
+waveform_pixel_data.write_array_of_uint8(pixels)
+
+waveform_image = Image.new
+waveform_image[:data] = waveform_pixel_data
+waveform_image[:width] = waveform_tex_width
+waveform_image[:height] = waveform_tex_height
+waveform_image[:mipmaps] = 1
+waveform_image[:format] = PIXELFORMAT_UNCOMPRESSED_GRAYSCALE
+
+waveform_tex = LoadTextureFromImage(waveform_image)
+puts "    Waveform texture: #{waveform_tex_width}x#{waveform_tex_height}"
+
+# Cleanup temp files
+waveform_raw_file.close!
 
 if options[:preview]
   # --- Step 1b: Find loudest moment for preview ---
@@ -182,7 +243,7 @@ end
 # --- Render helper ---
 # Renders a range of frames using the pass_shaders pipeline.
 # Yields frame index for progress reporting.
-def render_frames(frame_range, frame_dir, fps, pass_shaders, image_tex, audio_tex,
+def render_frames(frame_range, frame_dir, fps, pass_shaders, image_tex, audio_tex, waveform_tex,
                   buf_a, buf_b, chain_buf_a, chain_buf_b, width, height)
   current_buf = buf_a
   prev_buf = buf_b
@@ -216,6 +277,7 @@ def render_frames(frame_range, frame_dir, fps, pass_shaders, image_tex, audio_te
           BeginShaderMode(ps[:shader])
             SetShaderValueTexture(ps[:shader], ps[:loc_tex1], audio_tex)
             SetShaderValueTexture(ps[:shader], ps[:loc_tex2], prev_buf[:texture]) if ps[:loc_tex2] >= 0
+            SetShaderValueTexture(ps[:shader], ps[:loc_tex3], waveform_tex) if ps[:loc_tex3] >= 0
             DrawTexturePro(image_tex, src_rect, dst_rect, Vector2.create(0, 0), 0, WHITE)
           EndShaderMode()
         EndTextureMode()
@@ -228,6 +290,7 @@ def render_frames(frame_range, frame_dir, fps, pass_shaders, image_tex, audio_te
           BeginShaderMode(ps[:shader])
             SetShaderValueTexture(ps[:shader], ps[:loc_tex1], audio_tex)
             SetShaderValueTexture(ps[:shader], ps[:loc_tex2], current_buf[:texture]) if ps[:loc_tex2] >= 0
+            SetShaderValueTexture(ps[:shader], ps[:loc_tex3], waveform_tex) if ps[:loc_tex3] >= 0
             DrawTexturePro(image_tex, src_rect, dst_rect, Vector2.create(0, 0), 0, WHITE)
           EndShaderMode()
         EndTextureMode()
@@ -241,6 +304,7 @@ def render_frames(frame_range, frame_dir, fps, pass_shaders, image_tex, audio_te
           BeginShaderMode(ps[:shader])
             SetShaderValueTexture(ps[:shader], ps[:loc_tex1], audio_tex)
             SetShaderValueTexture(ps[:shader], ps[:loc_tex2], image_tex) if ps[:loc_tex2] >= 0
+            SetShaderValueTexture(ps[:shader], ps[:loc_tex3], waveform_tex) if ps[:loc_tex3] >= 0
             DrawTextureRec(export_buf[:texture], rt_src_rect, Vector2.create(0, 0), WHITE)
           EndShaderMode()
         EndTextureMode()
@@ -263,6 +327,8 @@ end
 # Load resources
 image_tex = LoadTexture(IMAGE_PATH)
 audio_tex = LoadTexture(audio_data_path)
+audio_data_file.close!
+
 
 # Ping-pong buffers (NEAREST filter prevents interpolation drift in temporal feedback)
 buf_a = LoadRenderTexture(WIDTH, HEIGHT)
@@ -280,6 +346,7 @@ pass_shaders = passes.map do |pass|
     loc_duration: GetShaderLocation(shader, "u_duration"),
     loc_tex1: GetShaderLocation(shader, "texture1"),
     loc_tex2: GetShaderLocation(shader, "texture2"),
+    loc_tex3: GetShaderLocation(shader, "texture3"),
   )
 end
 pass_shaders.each { |ps| SetShaderValue(ps[:shader], ps[:loc_duration], [duration].pack("f"), SHADER_UNIFORM_FLOAT) }
@@ -304,7 +371,7 @@ if options[:preview]
 
   last_pct = -1
   render_frames(preview_start_frame...preview_end_frame, preview_frame_dir, FPS,
-                pass_shaders, image_tex, audio_tex,
+                pass_shaders, image_tex, audio_tex, waveform_tex,
                 buf_a, buf_b, chain_buf_a, chain_buf_b, WIDTH, HEIGHT) do |idx|
     pct = (idx * 100) / actual_preview_frames
     if pct != last_pct
@@ -336,7 +403,7 @@ puts "==> Step 2b: Rendering #{total_frames} frames..."
 frame_dir = Dir.mktmpdir("av-frames")
 last_pct = -1
 render_frames(start_frame...end_frame, frame_dir, FPS,
-              pass_shaders, image_tex, audio_tex,
+              pass_shaders, image_tex, audio_tex, waveform_tex,
               buf_a, buf_b, chain_buf_a, chain_buf_b, WIDTH, HEIGHT) do |idx|
   pct = (idx * 100) / total_frames
   if pct != last_pct
@@ -350,6 +417,7 @@ puts "\r    [##################################################] 100%"
 pass_shaders.each { |ps| UnloadShader(ps[:shader]) }
 UnloadTexture(image_tex)
 UnloadTexture(audio_tex)
+UnloadTexture(waveform_tex)
 UnloadRenderTexture(buf_a)
 UnloadRenderTexture(buf_b)
 if pass_shaders.length > 1

@@ -29,15 +29,15 @@ include Raylib
 # --- Parse options ---
 require "optparse"
 
-options = { fps: 25, width: 1024, height: 1024, start: 0.0, preview: false }
+options = { fps: 25, start: 0.0, preview: false }
 OptionParser.new do |opts|
   opts.banner = "Usage: pipeline.rb [options] [shader] [image] [audio] [output]"
   opts.on("-n", "--frames N", Integer, "Render only N frames")        { |n| options[:max_frames] = n }
   opts.on("-t", "--duration SECS", Float, "Render only SECS seconds") { |t| options[:max_duration] = t }
   opts.on("-s", "--start SECS", Float, "Start render at SECS into the audio") { |t| options[:start] = t }
   opts.on("--fps N", Integer, "Frames per second (default: 25)")     { |n| options[:fps] = n }
-  opts.on("-w", "--width N", Integer, "Output width (default: 1024)") { |n| options[:width] = n }
-  opts.on("-H", "--height N", Integer, "Output height (default: 1024)") { |n| options[:height] = n }
+  opts.on("-w", "--width N", Integer, "Output width (auto-detect from image)") { |n| options[:width] = n }
+  opts.on("-H", "--height N", Integer, "Output height (auto-detect from image)") { |n| options[:height] = n }
   opts.on("-p", "--preview", "Also render a 2s preview around loudest moment") { options[:preview] = true }
 end.parse!
 
@@ -62,6 +62,18 @@ OUTPUT_PATH = File.expand_path(ARGV[3] || "output.mp4")
 
 SCRIPT_DIR = File.dirname(File.expand_path(__FILE__))
 FPS = options[:fps]
+
+# Auto-detect image dimensions from PNG header if not explicitly set
+unless options[:width] && options[:height]
+  png_header = File.binread(IMAGE_PATH, 24)
+  abort "#{IMAGE_PATH} is not a valid PNG" unless png_header[0, 4] == "\x89PNG".b
+  img_w = png_header[16, 4].unpack1("N")
+  img_h = png_header[20, 4].unpack1("N")
+  options[:width]  ||= img_w
+  options[:height] ||= img_h
+  puts "==> Image: #{img_w}x#{img_h} (auto-detected)"
+end
+
 WIDTH = options[:width]
 HEIGHT = options[:height]
 

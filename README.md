@@ -90,8 +90,8 @@ Use `-p` to also generate a 2-second `_preview.mp4` at the loudest moment before
 | `-t`, `--duration SECS` | Render only SECS seconds | all |
 | `-s`, `--start SECS` | Start render at SECS into the audio | 0 |
 | `--fps N` | Frames per second | 25 |
-| `-w`, `--width N` | Output width in pixels | 1024 |
-| `-H`, `--height N` | Output height in pixels | 1024 |
+| `-w`, `--width N` | Output width in pixels | from image |
+| `-H`, `--height N` | Output height in pixels | from image |
 | `-p`, `--preview` | Also render a 2s preview around loudest moment | off |
 
 ### Positional arguments

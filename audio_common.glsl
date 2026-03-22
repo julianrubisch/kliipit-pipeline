@@ -46,6 +46,17 @@ float getLoudness() {
     return sum / 32.0;
 }
 
+// Loudness at a specific time — averages 32 frequency bins at that moment (no smoothing)
+float getLoudnessAt(float time) {
+    float sum = 0.0;
+    float tx = clamp(time / u_duration, 0.0, 1.0);
+    for (int i = 0; i < 32; i++) {
+        float ty = 1.0 - float(i) / 32.0;
+        sum += texture(texture1, vec2(tx, ty)).r;
+    }
+    return sum / 32.0;
+}
+
 // Bass energy — bottom ~3% of spectrum (roughly 0–660 Hz)
 float getBass() {
     float sum = 0.0;

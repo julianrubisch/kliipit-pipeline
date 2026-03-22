@@ -3,18 +3,30 @@
 // Vector field pixel sort — STATE PASS (writes to ping-pong buffer)
 // Port of ciphrd's "Pixel sorting with vector field" (Shadertoy, MIT license)
 // Uses texelFetch + gl_FragCoord for pixel-precise feedback (no UV drift).
-// Audio reactivity stripped — pure algorithm for debugging.
+// Audio-reactive: field selection and direction flips driven by spectrogram loudness.
 
 in vec2 fragTexCoord;
 in vec4 fragColor;
 
 uniform sampler2D texture0;  // original image
-uniform sampler2D texture1;  // audio data (unused)
+uniform sampler2D texture1;  // audio spectrogram
 uniform sampler2D texture2;  // previous frame (sort state)
 uniform float u_time;
 uniform float u_duration;
 
 out vec4 finalColor;
+
+#include "audio_common.glsl"
+
+// ---------- tuning constants ----------
+
+const float FLIP_WINDOW = 2.0;      // minimum seconds between direction flips
+const float FLIP_BAND = 0.10;       // loudness band width for direction toggle
+const float FIELD_WINDOW = 3.0;     // minimum seconds per vector field
+const float FIELD_THRESH_LOW = 0.15; // below this → vfieldA (recalibrated to shader values)
+const float FIELD_THRESH_HIGH = 0.30; // above this → vfieldC, between → vfieldB
+const float SORT_THRESH_QUIET = 0.08; // sort threshold when silent (less sorting)
+const float SORT_THRESH_LOUD  = 0.01; // sort threshold at full loudness (more sorting)
 
 // ---------- helpers ----------
 
@@ -76,22 +88,29 @@ vec4 vfieldC(vec2 uv, vec2 res, float fr) {
     return vec4(dir, bVal, m);
 }
 
-// ---------- Get vector field (matches original Buffer C) ----------
+// ---------- Get vector field (audio-reactive selection + direction flip) ----------
 
 vec4 getVfield(vec2 uv, vec2 res, float fr, float time) {
-    float t = mod(time, 15.0);
+    // --- Vector field selection via loudness level ---
+    int fieldWindowIdx = int(floor(time / FIELD_WINDOW));
+    float fieldTime = (float(fieldWindowIdx) + 0.5) * FIELD_WINDOW;
+    float fieldLoud = getLoudnessAt(fieldTime);
 
     vec4 vfield;
-    if (t < 5.0) {
+    if (fieldLoud < FIELD_THRESH_LOW) {
         vfield = vfieldA(uv, res, fr);
-    } else if (t < 10.0) {
+    } else if (fieldLoud < FIELD_THRESH_HIGH) {
         vfield = vfieldB(uv, res, fr);
     } else {
         vfield = vfieldC(uv, res, fr);
     }
 
-    float t2 = mod(time, 30.0);
-    if (t2 > 15.0) {
+    // --- Direction flip: quantize loudness into bands, flip on odd bands ---
+    int flipWindowIdx = int(floor(time / FLIP_WINDOW));
+    float flipTime = (float(flipWindowIdx) + 0.5) * FLIP_WINDOW;
+    float flipLoud = getLoudnessAt(flipTime);
+    int band = int(floor(flipLoud / FLIP_BAND));
+    if (band % 2 == 1) {
         vfield.b = 1.0 - vfield.b;
     }
 
@@ -108,7 +127,9 @@ void main() {
     ivec2 icoord = ivec2(gl_FragCoord.xy);
     vec2 uv = gl_FragCoord.xy / res;
 
-    float threshold = 0.04;
+    // Sort threshold modulated by current loudness — louder = more sorting
+    float loud = getLoudnessAt(u_time);
+    float threshold = mix(SORT_THRESH_QUIET, SORT_THRESH_LOUD, clamp(loud / 0.4, 0.0, 1.0));
 
     // Vector field for this pixel
     vec4 vfield = getVfield(uv, res, fr, u_time);

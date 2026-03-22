@@ -13,7 +13,7 @@ pipeline.rb <shader.frag[,shader2.frag,...]> <image> <audio> [output.mp4]
   │     Generates a monochrome spectrogram at 25 cols/sec.
   │     Result: Nx129 PNG (1 column per frame, 128 frequency bins)
   │
-  ├── Step 1b: Find loudest moment → auto-preview
+  ├── Step 1b: (with -p) Find loudest moment → preview
   │     Scans the spectrogram for peak energy, renders a 2-second clip
   │     centered on that moment as <output>_preview.mp4.
   │
@@ -80,7 +80,7 @@ ruby pipeline.rb shaders/rutt_etra.frag,shaders/glitch.frag image.png audio.wav 
 ruby pipeline.rb shaders/vfield_sort.frag,shaders/glitch.frag image.png audio.wav output.mp4
 ```
 
-Every run automatically generates a 2-second `_preview.mp4` at the loudest moment before rendering the full video.
+Use `-p` to also generate a 2-second `_preview.mp4` at the loudest moment before rendering the full video.
 
 ### Options
 
@@ -92,6 +92,7 @@ Every run automatically generates a 2-second `_preview.mp4` at the loudest momen
 | `--fps N` | Frames per second | 25 |
 | `-w`, `--width N` | Output width in pixels | 1024 |
 | `-H`, `--height N` | Output height in pixels | 1024 |
+| `-p`, `--preview` | Also render a 2s preview around loudest moment | off |
 
 ### Positional arguments
 
@@ -156,6 +157,7 @@ Include the shared helpers to avoid manual texture sampling:
 | `getFrequency(float freq)` | `float` | Lowpass-filtered FFT magnitude at normalized frequency (0.0=DC, 1.0=Nyquist) |
 | `getFrequencyRaw(float freq)` | `float` | Unsmoothed FFT magnitude — use for transient-sensitive effects |
 | `getLoudness()` | `float` | Overall energy (average of 32 bins, lowpass filtered) |
+| `getLoudnessAt(float time)` | `float` | Overall energy at an arbitrary time (unsmoothed) — for time-windowed decisions |
 | `getBass()` | `float` | Low frequency energy (~0–660 Hz, 4 bins) |
 | `getMids()` | `float` | Mid frequency energy (~660 Hz–4 kHz, 20 bins) |
 | `getTreble()` | `float` | High frequency energy (4 kHz+, 40 bins) |
@@ -311,7 +313,7 @@ Organic fluid distortion via layered fractal Brownian motion noise. Bass drives 
 Rutt-Etra video synthesizer: horizontal scan lines are vertically displaced by image brightness, creating a 3D wireframe look. Bass widens line spacing for a heavier feel, mids thicken lines and speed up scroll, treble boosts color intensity. Loudness fills the gaps between scan lines with the underlying image.
 
 ### `shaders/vfield_sort.frag` + `vfield_sort_display.frag` ([sample](samples/vfield_sort.mp4))
-Vector field pixel sort (port of ciphrd's Shadertoy, MIT). Three alternating vector fields (horizontal bands, diagonal/quadrant, vertical split) cycle every 5 seconds, each driving a different sorting pattern. Uses `texelFetch` for pixel-precise feedback — no interpolation drift across frames.
+Vector field pixel sort (port of ciphrd's Shadertoy, MIT). Three vector fields (horizontal bands, diagonal/quadrant, vertical split) are selected by audio loudness — quiet sections use simple horizontal sorting, loud sections use complex vertical splits. Sort direction flips when loudness crosses band boundaries (quantized into 0.10-wide bands, odd bands flip). The sort threshold is also modulated by loudness: more sorting during loud passages, less during quiet ones. Uses `texelFetch` for pixel-precise feedback — no interpolation drift across frames.
 
 ## Architecture notes
 
@@ -366,7 +368,7 @@ The pipeline builds an ordered list of passes with three possible roles:
 
 ### Preview rendering
 
-Before the full render, the pipeline automatically scans the spectrogram for the column with the highest total energy and renders a 2-second clip centered on that moment. The preview is saved as `<output>_preview.mp4` with the matching audio segment. This lets you spot-check the shader at peak audio intensity without waiting for a full render.
+With `-p`/`--preview`, the pipeline scans the spectrogram for the column with the highest total energy and renders a 2-second clip centered on that moment before the full render. The preview is saved as `<output>_preview.mp4` with the matching audio segment. This lets you spot-check the shader at peak audio intensity without waiting for a full render.
 
 ### Frame export bottleneck
 

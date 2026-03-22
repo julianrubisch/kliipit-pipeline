@@ -29,7 +29,7 @@ include Raylib
 # --- Parse options ---
 require "optparse"
 
-options = { fps: 25, width: 1024, height: 1024, start: 0.0 }
+options = { fps: 25, width: 1024, height: 1024, start: 0.0, preview: false }
 OptionParser.new do |opts|
   opts.banner = "Usage: pipeline.rb [options] [shader] [image] [audio] [output]"
   opts.on("-n", "--frames N", Integer, "Render only N frames")        { |n| options[:max_frames] = n }
@@ -38,6 +38,7 @@ OptionParser.new do |opts|
   opts.on("--fps N", Integer, "Frames per second (default: 25)")     { |n| options[:fps] = n }
   opts.on("-w", "--width N", Integer, "Output width (default: 1024)") { |n| options[:width] = n }
   opts.on("-H", "--height N", Integer, "Output height (default: 1024)") { |n| options[:height] = n }
+  opts.on("-p", "--preview", "Also render a 2s preview around loudest moment") { options[:preview] = true }
 end.parse!
 
 # --- Args (resolve to absolute paths before raylib changes CWD) ---
@@ -112,11 +113,6 @@ system("sox", AUDIO_PATH, "-n", "remix", "-", "spectrogram",
 
 puts "    Created audio_data.png"
 
-# --- Step 1b: Find loudest moment for preview ---
-# Read the spectrogram PNG to find the column (frame) with the highest total energy.
-# Each column is one time step; sum all frequency bins to get overall loudness.
-puts "==> Step 1b: Finding loudest moment for preview..."
-
 preview_duration = 2.0
 preview_frames = (preview_duration * FPS).to_i
 
@@ -136,35 +132,40 @@ SetTraceLogLevel(LOG_ERROR)
 InitWindow(WIDTH, HEIGHT, "pipeline")
 SetTargetFPS(9999)
 
-# Load the spectrogram to find peak loudness column
-spec_img = LoadImage(audio_data_path)
-spec_w = spec_img[:width]
-spec_h = spec_img[:height]
+if options[:preview]
+  # --- Step 1b: Find loudest moment for preview ---
+  puts "==> Step 1b: Finding loudest moment for preview..."
 
-loudest_col = 0
-loudest_energy = 0.0
-spec_w.times do |x|
-  col_energy = 0.0
-  spec_h.times do |y|
-    c = GetImageColor(spec_img, x, y)
-    col_energy += c[:r] / 255.0  # monochrome, so r=g=b
+  # Load the spectrogram to find peak loudness column
+  spec_img = LoadImage(audio_data_path)
+  spec_w = spec_img[:width]
+  spec_h = spec_img[:height]
+
+  loudest_col = 0
+  loudest_energy = 0.0
+  spec_w.times do |x|
+    col_energy = 0.0
+    spec_h.times do |y|
+      c = GetImageColor(spec_img, x, y)
+      col_energy += c[:r] / 255.0  # monochrome, so r=g=b
+    end
+    if col_energy > loudest_energy
+      loudest_energy = col_energy
+      loudest_col = x
+    end
   end
-  if col_energy > loudest_energy
-    loudest_energy = col_energy
-    loudest_col = x
-  end
+  UnloadImage(spec_img)
+
+  # Convert spectrogram column to time
+  loudest_time = loudest_col.to_f / spectrogram_pps
+  # Center the preview window around the loudest moment
+  preview_start = [loudest_time - preview_duration / 2.0, 0.0].max
+  preview_start = [preview_start, duration - preview_duration].min if duration > preview_duration
+  preview_start_frame = (preview_start * FPS).to_i
+  preview_end_frame = [preview_start_frame + preview_frames, total_audio_frames].min
+
+  puts "    Loudest moment: #{loudest_time.round(2)}s — preview window: #{preview_start.round(2)}s–#{(preview_start + preview_duration).round(2)}s"
 end
-UnloadImage(spec_img)
-
-# Convert spectrogram column to time
-loudest_time = loudest_col.to_f / spectrogram_pps
-# Center the preview window around the loudest moment
-preview_start = [loudest_time - preview_duration / 2.0, 0.0].max
-preview_start = [preview_start, duration - preview_duration].min if duration > preview_duration
-preview_start_frame = (preview_start * FPS).to_i
-preview_end_frame = [preview_start_frame + preview_frames, total_audio_frames].min
-
-puts "    Loudest moment: #{loudest_time.round(2)}s — preview window: #{preview_start.round(2)}s–#{(preview_start + preview_duration).round(2)}s"
 
 # --- Render helper ---
 # Renders a range of frames using the pass_shaders pipeline.
@@ -281,39 +282,41 @@ if pass_shaders.length > 1
   chain_buf_b = LoadRenderTexture(WIDTH, HEIGHT)
 end
 
-# --- Step 2a: Render preview ---
-preview_path = OUTPUT_PATH.sub(/(\.\w+)$/, '_preview\1')
-preview_frame_dir = Dir.mktmpdir("av-preview")
-actual_preview_frames = preview_end_frame - preview_start_frame
+if options[:preview]
+  # --- Step 2a: Render preview ---
+  preview_path = OUTPUT_PATH.sub(/(\.\w+)$/, '_preview\1')
+  preview_frame_dir = Dir.mktmpdir("av-preview")
+  actual_preview_frames = preview_end_frame - preview_start_frame
 
-puts "==> Step 2a: Rendering #{actual_preview_frames}-frame preview..."
+  puts "==> Step 2a: Rendering #{actual_preview_frames}-frame preview..."
 
-last_pct = -1
-render_frames(preview_start_frame...preview_end_frame, preview_frame_dir, FPS,
-              pass_shaders, image_tex, audio_tex,
-              buf_a, buf_b, chain_buf_a, chain_buf_b, WIDTH, HEIGHT) do |idx|
-  pct = (idx * 100) / actual_preview_frames
-  if pct != last_pct
-    print "\r    [#{"#" * (pct / 2)}#{" " * (50 - pct / 2)}] #{pct}%"
-    last_pct = pct
+  last_pct = -1
+  render_frames(preview_start_frame...preview_end_frame, preview_frame_dir, FPS,
+                pass_shaders, image_tex, audio_tex,
+                buf_a, buf_b, chain_buf_a, chain_buf_b, WIDTH, HEIGHT) do |idx|
+    pct = (idx * 100) / actual_preview_frames
+    if pct != last_pct
+      print "\r    [#{"#" * (pct / 2)}#{" " * (50 - pct / 2)}] #{pct}%"
+      last_pct = pct
+    end
   end
+  puts "\r    [##################################################] 100%"
+
+  # Mux preview with audio (offset to the loudest section)
+  system("ffmpeg", "-y", "-v", "warning",
+         "-framerate", FPS.to_s,
+         "-start_number", "0",
+         "-i", File.join(preview_frame_dir, "%05d.png"),
+         "-ss", preview_start.to_s,
+         "-i", AUDIO_PATH,
+         "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-b:a", "256k",
+         "-shortest", preview_path,
+         exception: true)
+
+  FileUtils.rm_rf(preview_frame_dir)
+  puts "    Preview: #{preview_path}"
 end
-puts "\r    [##################################################] 100%"
-
-# Mux preview with audio (offset to the loudest section)
-system("ffmpeg", "-y", "-v", "warning",
-       "-framerate", FPS.to_s,
-       "-start_number", "0",
-       "-i", File.join(preview_frame_dir, "%05d.png"),
-       "-ss", preview_start.to_s,
-       "-i", AUDIO_PATH,
-       "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
-       "-c:a", "aac", "-b:a", "256k",
-       "-shortest", preview_path,
-       exception: true)
-
-FileUtils.rm_rf(preview_frame_dir)
-puts "    Preview: #{preview_path}"
 
 # --- Step 2b: Render full video ---
 puts "==> Step 2b: Rendering #{total_frames} frames..."

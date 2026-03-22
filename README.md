@@ -300,20 +300,48 @@ Shadertoy's audio texture is 512x2 (row 0 = FFT, row 1 = waveform). This pipelin
 ### `shaders/overdrive.frag` ([sample](samples/overdrive.mp4))
 Kitchen-sink effects: bass zoom pulse, chromatic aberration, bloom, color temperature shift (magenta on bass / cyan on treble), throbbing scan lines, horizontal glitch slices, invert flash on transients, breathing vignette, film grain. The default shader.
 
+https://github.com/user-attachments/assets/e70ebf1f-3487-415a-9b73-75de639d7245
+
 ### `shaders/vcr_distortion.frag` ([sample](samples/vcr_distortion.mp4))
 VHS/VCR aesthetic: tape wobble, tracking lines, chromatic smearing, static noise, head switching artifacts. Bass drives wobble intensity, treble drives tracking speed.
+
+https://github.com/user-attachments/assets/5a357b6f-01aa-445e-b373-33cf5fcd0313
 
 ### `shaders/glitch.frag` ([sample](samples/glitch.mp4))
 Digital glitch: block displacement, RGB channel splits, noise corruption blocks, color quantization (bit crush). Treble triggers block displacement, bass drives large corruption. Works well as a `:post` shader in chains.
 
+
+
+https://github.com/user-attachments/assets/be8a55ea-a782-453b-88af-c973fef9a629
+
+
+
 ### `shaders/domain_warp.frag` ([sample](samples/domain_warp.mp4))
 Organic fluid distortion via layered fractal Brownian motion noise. Bass drives slow large-scale warping, treble drives finer detail. More subtle and atmospheric.
+
+
+
+https://github.com/user-attachments/assets/5924f65b-5520-4853-9d4c-52583cd2431f
+
+
 
 ### `shaders/rutt_etra.frag` ([sample](samples/rutt_etra.mp4))
 Rutt-Etra video synthesizer: horizontal scan lines are vertically displaced by image brightness, creating a 3D wireframe look. Bass widens line spacing for a heavier feel, mids thicken lines and speed up scroll, treble boosts color intensity. Loudness fills the gaps between scan lines with the underlying image.
 
+
+
+https://github.com/user-attachments/assets/375872e0-33a3-4b86-99d3-40a9dc6261d6
+
+
+
 ### `shaders/vfield_sort.frag` + `vfield_sort_display.frag` ([sample](samples/vfield_sort.mp4))
 Vector field pixel sort (port of ciphrd's Shadertoy, MIT). Three vector fields (horizontal bands, diagonal/quadrant, vertical split) are selected by audio loudness — quiet sections use simple horizontal sorting, loud sections use complex vertical splits. Sort direction flips when loudness crosses band boundaries (quantized into 0.10-wide bands, odd bands flip). The sort threshold is also modulated by loudness: more sorting during loud passages, less during quiet ones. Uses `texelFetch` for pixel-precise feedback — no interpolation drift across frames.
+
+
+
+https://github.com/user-attachments/assets/e2f7dbee-363c-47f2-adba-1817c2f9f13b
+
+
 
 ## Architecture notes
 

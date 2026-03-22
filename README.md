@@ -1,5 +1,7 @@
 # Audio-Reactive Video Pipeline
 
+The rendering engine behind [kliip.it](https://kliip.it/).
+
 Render audio-reactive video from a **static image + audio file** using pluggable **GLSL shaders**. The pipeline analyzes audio via FFT, encodes it as a texture, then runs a fragment shader per-frame with the image and audio data as inputs. Frames are assembled into a final video with the original audio.
 
 ## How it works

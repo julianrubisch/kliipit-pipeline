@@ -29,11 +29,12 @@ include Raylib
 # --- Parse options ---
 require "optparse"
 
-options = { fps: 25, width: 1024, height: 1024 }
+options = { fps: 25, width: 1024, height: 1024, start: 0.0 }
 OptionParser.new do |opts|
   opts.banner = "Usage: pipeline.rb [options] [shader] [image] [audio] [output]"
   opts.on("-n", "--frames N", Integer, "Render only N frames")        { |n| options[:max_frames] = n }
   opts.on("-t", "--duration SECS", Float, "Render only SECS seconds") { |t| options[:max_duration] = t }
+  opts.on("-s", "--start SECS", Float, "Start render at SECS into the audio") { |t| options[:start] = t }
   opts.on("--fps N", Integer, "Frames per second (default: 25)")     { |n| options[:fps] = n }
   opts.on("-w", "--width N", Integer, "Output width (default: 1024)") { |n| options[:width] = n }
   opts.on("-H", "--height N", Integer, "Output height (default: 1024)") { |n| options[:height] = n }
@@ -77,15 +78,21 @@ duration = `soxi -D "#{AUDIO_PATH}"`.strip.to_f
 total_frames = (duration * FPS).to_i
 audio_data_path = File.join(SCRIPT_DIR, "audio_data.png")
 
-# Apply frame/duration limits
+# Apply frame/duration limits (these limit the *duration*, not the absolute end)
 if options[:max_frames]
   total_frames = [total_frames, options[:max_frames]].min
 elsif options[:max_duration]
   total_frames = [total_frames, (options[:max_duration] * FPS).to_i].min
 end
+
+# Apply start offset
+total_audio_frames = (duration * FPS).to_i
+start_frame = [[((options[:start]) * FPS).to_i, 0].max, total_audio_frames].min
+end_frame = [start_frame + total_frames, total_audio_frames].min
+total_frames = end_frame - start_frame
 render_duration = total_frames.to_f / FPS
 
-puts "==> Audio: #{duration}s total, rendering #{total_frames} frames (#{render_duration}s) at #{FPS}fps"
+puts "==> Audio: #{duration}s total, rendering #{total_frames} frames (#{render_duration}s) at #{FPS}fps, starting at #{options[:start]}s"
 puts "==> Step 1: Generating audio data texture..."
 
 # Ensure spectrogram width stays within GPU max texture size (typically 16384).
@@ -155,7 +162,7 @@ loudest_time = loudest_col.to_f / spectrogram_pps
 preview_start = [loudest_time - preview_duration / 2.0, 0.0].max
 preview_start = [preview_start, duration - preview_duration].min if duration > preview_duration
 preview_start_frame = (preview_start * FPS).to_i
-preview_end_frame = [preview_start_frame + preview_frames, total_frames].min
+preview_end_frame = [preview_start_frame + preview_frames, total_audio_frames].min
 
 puts "    Loudest moment: #{loudest_time.round(2)}s — preview window: #{preview_start.round(2)}s–#{(preview_start + preview_duration).round(2)}s"
 
@@ -167,11 +174,13 @@ def render_frames(frame_range, frame_dir, fps, pass_shaders, image_tex, audio_te
   current_buf = buf_a
   prev_buf = buf_b
 
-  # Re-initialize ping-pong buffers with source image
+  # Re-initialize ping-pong buffers with source image (scaled to render target)
+  src_rect = Rectangle.create(0, 0, image_tex[:width], image_tex[:height])
+  dst_rect = Rectangle.create(0, 0, width, height)
   [buf_a, buf_b].each do |buf|
     BeginTextureMode(buf)
       ClearBackground(BLACK)
-      DrawTexture(image_tex, 0, 0, WHITE)
+      DrawTexturePro(image_tex, src_rect, dst_rect, Vector2.create(0, 0), 0, WHITE)
     EndTextureMode()
   end
 
@@ -194,7 +203,7 @@ def render_frames(frame_range, frame_dir, fps, pass_shaders, image_tex, audio_te
           BeginShaderMode(ps[:shader])
             SetShaderValueTexture(ps[:shader], ps[:loc_tex1], audio_tex)
             SetShaderValueTexture(ps[:shader], ps[:loc_tex2], prev_buf[:texture]) if ps[:loc_tex2] >= 0
-            DrawTexture(image_tex, 0, 0, WHITE)
+            DrawTexturePro(image_tex, src_rect, dst_rect, Vector2.create(0, 0), 0, WHITE)
           EndShaderMode()
         EndTextureMode()
         export_buf = current_buf
@@ -206,7 +215,7 @@ def render_frames(frame_range, frame_dir, fps, pass_shaders, image_tex, audio_te
           BeginShaderMode(ps[:shader])
             SetShaderValueTexture(ps[:shader], ps[:loc_tex1], audio_tex)
             SetShaderValueTexture(ps[:shader], ps[:loc_tex2], current_buf[:texture]) if ps[:loc_tex2] >= 0
-            DrawTexture(image_tex, 0, 0, WHITE)
+            DrawTexturePro(image_tex, src_rect, dst_rect, Vector2.create(0, 0), 0, WHITE)
           EndShaderMode()
         EndTextureMode()
         export_buf = target
@@ -242,9 +251,11 @@ end
 image_tex = LoadTexture(IMAGE_PATH)
 audio_tex = LoadTexture(audio_data_path)
 
-# Ping-pong buffers
+# Ping-pong buffers (NEAREST filter prevents interpolation drift in temporal feedback)
 buf_a = LoadRenderTexture(WIDTH, HEIGHT)
 buf_b = LoadRenderTexture(WIDTH, HEIGHT)
+SetTextureFilter(buf_a[:texture], TEXTURE_FILTER_POINT)
+SetTextureFilter(buf_b[:texture], TEXTURE_FILTER_POINT)
 
 # Load all shaders from pass list
 pass_shaders = passes.map do |pass|
@@ -309,7 +320,7 @@ puts "==> Step 2b: Rendering #{total_frames} frames..."
 
 frame_dir = Dir.mktmpdir("av-frames")
 last_pct = -1
-render_frames(0...total_frames, frame_dir, FPS,
+render_frames(start_frame...end_frame, frame_dir, FPS,
               pass_shaders, image_tex, audio_tex,
               buf_a, buf_b, chain_buf_a, chain_buf_b, WIDTH, HEIGHT) do |idx|
   pct = (idx * 100) / total_frames
@@ -337,15 +348,16 @@ puts "    Rendered #{total_frames} frames"
 # --- Step 3: Assemble with ffmpeg ---
 puts "==> Step 3: Encoding video..."
 
-system("ffmpeg", "-y",
+ffmpeg_cmd = ["ffmpeg", "-y",
        "-framerate", FPS.to_s,
        "-start_number", "0",
-       "-i", File.join(frame_dir, "%05d.png"),
-       "-i", AUDIO_PATH,
+       "-i", File.join(frame_dir, "%05d.png")]
+ffmpeg_cmd += ["-ss", (start_frame.to_f / FPS).to_s] if start_frame > 0
+ffmpeg_cmd += ["-i", AUDIO_PATH,
        "-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p",
        "-c:a", "aac", "-b:a", "256k",
-       "-shortest", OUTPUT_PATH,
-       exception: true)
+       "-shortest", OUTPUT_PATH]
+system(*ffmpeg_cmd, exception: true)
 
 puts "==> Done: #{OUTPUT_PATH}"
 

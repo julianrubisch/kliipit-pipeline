@@ -76,8 +76,8 @@ ruby pipeline.rb -n 90 -w 512 --height 512 shaders/overdrive.frag image.png audi
 # Chain two shaders: rutt_etra state → glitch post-processing
 ruby pipeline.rb shaders/rutt_etra.frag,shaders/glitch.frag image.png audio.wav output.mp4
 
-# Three-pass chain: pixel_sort state → pixel_sort_display → glitch post
-ruby pipeline.rb shaders/pixel_sort.frag,shaders/glitch.frag image.png audio.wav output.mp4
+# Three-pass chain: vfield_sort state → vfield_sort_display → glitch post
+ruby pipeline.rb shaders/vfield_sort.frag,shaders/glitch.frag image.png audio.wav output.mp4
 ```
 
 Every run automatically generates a 2-second `_preview.mp4` at the loudest moment before rendering the full video.
@@ -88,6 +88,7 @@ Every run automatically generates a 2-second `_preview.mp4` at the loudest momen
 |------|-------------|---------|
 | `-n`, `--frames N` | Render only N frames | all |
 | `-t`, `--duration SECS` | Render only SECS seconds | all |
+| `-s`, `--start SECS` | Start render at SECS into the audio | 0 |
 | `--fps N` | Frames per second | 25 |
 | `-w`, `--width N` | Output width in pixels | 1024 |
 | `-H`, `--height N` | Output height in pixels | 1024 |
@@ -294,26 +295,23 @@ Shadertoy's audio texture is 512x2 (row 0 = FFT, row 1 = waveform). This pipelin
 
 ## Included shaders
 
-### `shaders/overdrive.frag`
+### `shaders/overdrive.frag` ([sample](samples/overdrive.mp4))
 Kitchen-sink effects: bass zoom pulse, chromatic aberration, bloom, color temperature shift (magenta on bass / cyan on treble), throbbing scan lines, horizontal glitch slices, invert flash on transients, breathing vignette, film grain. The default shader.
 
-### `shaders/vcr_distortion.frag`
+### `shaders/vcr_distortion.frag` ([sample](samples/vcr_distortion.mp4))
 VHS/VCR aesthetic: tape wobble, tracking lines, chromatic smearing, static noise, head switching artifacts. Bass drives wobble intensity, treble drives tracking speed.
 
-### `shaders/glitch.frag`
+### `shaders/glitch.frag` ([sample](samples/glitch.mp4))
 Digital glitch: block displacement, RGB channel splits, noise corruption blocks, color quantization (bit crush). Treble triggers block displacement, bass drives large corruption. Works well as a `:post` shader in chains.
 
-### `shaders/domain_warp.frag`
+### `shaders/domain_warp.frag` ([sample](samples/domain_warp.mp4))
 Organic fluid distortion via layered fractal Brownian motion noise. Bass drives slow large-scale warping, treble drives finer detail. More subtle and atmospheric.
 
-### `shaders/pixel_sort.frag` + `pixel_sort_display.frag`
-Two-pass pixel sort. Columns map to FFT frequency bins. Active bands cause bright pixels to streak downward. The display pass applies warm/cool tinting by frequency position without polluting the sort state.
-
-### `shaders/rutt_etra.frag`
+### `shaders/rutt_etra.frag` ([sample](samples/rutt_etra.mp4))
 Rutt-Etra video synthesizer: horizontal scan lines are vertically displaced by image brightness, creating a 3D wireframe look. Bass widens line spacing for a heavier feel, mids thicken lines and speed up scroll, treble boosts color intensity. Loudness fills the gaps between scan lines with the underlying image.
 
-### `shaders/vfield_sort.frag` + `vfield_sort_display.frag`
-Vector field pixel sort (port of ciphrd's Shadertoy, MIT). Three alternating vector fields (horizontal bands, diagonal/quadrant, vertical split) drive sorting direction. Audio-reactive: bass widens sort threshold, mids bias pattern selection toward complex fields and speed up cycling, treble drives direction flipping, loudness controls decay back to original image.
+### `shaders/vfield_sort.frag` + `vfield_sort_display.frag` ([sample](samples/vfield_sort.mp4))
+Vector field pixel sort (port of ciphrd's Shadertoy, MIT). Three alternating vector fields (horizontal bands, diagonal/quadrant, vertical split) cycle every 5 seconds, each driving a different sorting pattern. Uses `texelFetch` for pixel-precise feedback — no interpolation drift across frames.
 
 ## Architecture notes
 
@@ -332,16 +330,16 @@ A single `sox spectrogram` call encodes the entire FFT analysis into one PNG tex
 
 ### Two-pass shaders (temporal feedback)
 
-Shaders can access the previous frame via `texture2` (ping-pong buffer). If a shader has a companion `_display.frag` file (e.g. `pixel_sort.frag` + `pixel_sort_display.frag`), the pipeline auto-expands it into two passes:
+Shaders can access the previous frame via `texture2` (ping-pong buffer). If a shader has a companion `_display.frag` file (e.g. `vfield_sort.frag` + `vfield_sort_display.frag`), the pipeline auto-expands it into two passes:
 
-1. **State pass** (`pixel_sort.frag`): writes clean sort/feedback state to the ping-pong buffer
-2. **Display pass** (`pixel_sort_display.frag`): reads the state via `texture2`, applies visual effects, exports the frame
+1. **State pass** (`vfield_sort.frag`): writes clean sort/feedback state to the ping-pong buffer
+2. **Display pass** (`vfield_sort_display.frag`): reads the state via `texture2`, applies visual effects, exports the frame
 
 This prevents color/brightness changes from compounding across frames. The `_display` convention works transparently whether the shader is used alone or as the first shader in a chain.
 
 ### Shader chaining
 
-Multiple shaders can be chained so one shader's output feeds into the next. Pass comma-separated paths as the first argument:
+Multiple shaders can be chained so one shader's output feeds into the next ([sample](samples/rutt_etra_glitch.mp4)). Pass comma-separated paths as the first argument:
 
 ```bash
 ruby pipeline.rb shaders/rutt_etra.frag,shaders/glitch.frag image.png audio.wav
@@ -360,9 +358,9 @@ The pipeline builds an ordered list of passes with three possible roles:
 | Input | Passes |
 |-------|--------|
 | `glitch.frag` | `[state]` — single pass, no extra buffers |
-| `pixel_sort.frag` | `[state, display]` — auto-expanded, same as two-pass |
+| `vfield_sort.frag` | `[state, display]` — auto-expanded, same as two-pass |
 | `rutt_etra.frag,glitch.frag` | `[state, post]` — 2-pass chain |
-| `pixel_sort.frag,glitch.frag` | `[state, display, post]` — 3-pass chain |
+| `vfield_sort.frag,glitch.frag` | `[state, display, post]` — 3-pass chain |
 
 **Buffer allocation:** `buf_a`/`buf_b` (ping-pong) are always allocated. `chain_buf_a`/`chain_buf_b` are allocated only when there are multiple passes. Max 4 RenderTextures regardless of chain length.
 
@@ -385,13 +383,12 @@ The main bottleneck is PNG export — `LoadImageFromTexture` + `ExportImage` per
 ├── pipeline.rb                    # Main pipeline script (Ruby + bundler/inline)
 ├── audio_common.glsl              # Shared audio helper functions
 ├── audio_data.png                 # Generated: sox spectrogram (gitignored)
+├── samples/                       # 5-second sample clips at peak audio reactivity
 ├── shaders/
 │   ├── overdrive.frag             # Kitchen-sink: zoom, aberration, bloom, glitch, grain
 │   ├── vcr_distortion.frag        # VHS tape degradation
 │   ├── glitch.frag                # Digital block glitch
 │   ├── domain_warp.frag           # Organic fluid warping
-│   ├── pixel_sort.frag            # Pixel sorting state pass (two-pass)
-│   ├── pixel_sort_display.frag    # Pixel sorting display pass
 │   ├── rutt_etra.frag             # Rutt-Etra scanline displacement
 │   ├── vfield_sort.frag           # Vector field pixel sort state pass (two-pass)
 │   ├── vfield_sort_display.frag   # Vector field pixel sort display pass

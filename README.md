@@ -303,7 +303,7 @@ Kitchen-sink effects: bass zoom pulse, chromatic aberration, bloom, color temper
 https://github.com/user-attachments/assets/e70ebf1f-3487-415a-9b73-75de639d7245
 
 ### `shaders/vcr_distortion.frag` ([sample](samples/vcr_distortion.mp4))
-VHS/VCR aesthetic: tape wobble, tracking lines, chromatic smearing, static noise, head switching artifacts. Bass drives wobble intensity, treble drives tracking speed.
+VHS/VCR aesthetic: tape wobble, tracking lines, chromatic smearing, static noise, head switching artifacts. Bass drives wobble intensity, treble drives tracking speed. Adapted from Tsoding's [VCR Distortion](https://www.shadertoy.com/view/ldjGzV) on Shadertoy.
 
 https://github.com/user-attachments/assets/5a357b6f-01aa-445e-b373-33cf5fcd0313
 
@@ -335,7 +335,7 @@ https://github.com/user-attachments/assets/375872e0-33a3-4b86-99d3-40a9dc6261d6
 
 
 ### `shaders/vfield_sort.frag` + `vfield_sort_display.frag` ([sample](samples/vfield_sort.mp4))
-Vector field pixel sort (port of ciphrd's Shadertoy, MIT). Three vector fields (horizontal bands, diagonal/quadrant, vertical split) are selected by audio loudness — quiet sections use simple horizontal sorting, loud sections use complex vertical splits. Sort direction flips when loudness crosses band boundaries (quantized into 0.10-wide bands, odd bands flip). The sort threshold is also modulated by loudness: more sorting during loud passages, less during quiet ones. Uses `texelFetch` for pixel-precise feedback — no interpolation drift across frames.
+Vector field pixel sort, ported from ciphrd's [Pixel sorting with vector field](https://www.shadertoy.com/view/3dXSzs) on Shadertoy (MIT license). Three vector fields (horizontal bands, diagonal/quadrant, vertical split) are selected by audio loudness — quiet sections use simple horizontal sorting, loud sections use complex vertical splits. Sort direction flips when loudness crosses band boundaries (quantized into 0.10-wide bands, odd bands flip). The sort threshold is also modulated by loudness: more sorting during loud passages, less during quiet ones. Uses `texelFetch` for pixel-precise feedback — no interpolation drift across frames.
 
 
 
@@ -425,6 +425,11 @@ The main bottleneck is PNG export — `LoadImageFromTexture` + `ExportImage` per
 │   └── README                     # Quick shader interface reference
 └── README.md                      # This file
 ```
+
+## Acknowledgments
+
+- **VCR Distortion** — adapted from [ldjGzV](https://www.shadertoy.com/view/ldjGzV) by Tsoding on Shadertoy
+- **Pixel sorting with vector field** — ported from [3dXSzs](https://www.shadertoy.com/view/3dXSzs) by ciphrd on Shadertoy (MIT license)
 
 ## License
 

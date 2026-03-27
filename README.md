@@ -389,6 +389,21 @@ https://github.com/user-attachments/assets/28e414ec-ce6e-485e-b306-f0182cc86219
 
 
 
+### `shaders/radial_spectrum.frag` ([sample](samples/radial_spectrum.mp4))
+Frequency bars arranged in a circular ring. 96 bars rotated around a center point, bar length driven by FFT magnitude at each frequency. Adapted from [4stfR8](https://www.shadertoy.com/view/4stfR8) on Shadertoy.
+
+### `shaders/plasma_globe.frag` ([sample](samples/plasma_globe.mp4))
+Volumetric raymarched plasma tendrils emanating from a central sphere. Ray count, brightness, and color driven by bass/mids/treble. Adapted from nimitz's [Plasma Globe](https://www.shadertoy.com/view/XsjXRm) on Shadertoy, via ArthurTent's [ShaderAmp fork](https://www.shadertoy.com/view/43GGDm). CC BY-NC-SA 3.0.
+
+### `shaders/discoteq.frag` ([sample](samples/discoteq.mp4))
+Neon animated lines with blur and glow reacting to the audio spectrum. Line displacement and color intensity driven by frequency bands across the full range. Adapted from [mlfBDX](https://www.shadertoy.com/view/mlfBDX) on Shadertoy (by wj). CC BY-NC-SA 3.0.
+
+### `shaders/chaolotus.frag` ([sample](samples/chaolotus.mp4))
+Chaotic mandala/lotus with organic symmetric shapes morphing and pulsing with music. Bass drives radial distortion, mids modulate angular frequency, treble controls color cycling. Adapted from [wstXW2](https://www.shadertoy.com/view/wstXW2) on Shadertoy.
+
+### `shaders/audio_3d.frag` ([sample](samples/audio_3d.mp4))
+Raymarched 3D cityscape of bars deformed by the audio spectrum. Camera orbits the scene; bar height, color, and glow intensity mapped to frequency pitch and overall volume. Nearby bars react to volume, distant bars to higher frequencies. Adapted from kishimisu's [3D Audio Visualizer](https://www.shadertoy.com/view/Dtj3zW) on Shadertoy. CC BY-NC-SA 4.0.
+
 ## Architecture notes
 
 ### Why sox for audio analysis?
@@ -522,6 +537,11 @@ The main bottleneck is PNG export — `LoadImageFromTexture` + `ExportImage` per
 │   ├── rutt_etra.frag             # Rutt-Etra scanline displacement
 │   ├── showfreqs.frag             # Frequency spectrum bar graph
 │   ├── showwaves.frag             # Raw PCM waveform oscilloscope (uses texture3)
+│   ├── radial_spectrum.frag       # Circular frequency bar ring (Shadertoy 4stfR8)
+│   ├── plasma_globe.frag          # Volumetric plasma tendrils (Shadertoy XsjXRm)
+│   ├── discoteq.frag              # Neon animated lines (Shadertoy mlfBDX)
+│   ├── chaolotus.frag             # Chaotic mandala (Shadertoy wstXW2)
+│   ├── audio_3d.frag              # Raymarched 3D bar city (Shadertoy Dtj3zW)
 │   ├── vfield_sort.frag           # Vector field pixel sort state pass (two-pass)
 │   ├── vfield_sort_display.frag   # Vector field pixel sort display pass
 │   └── README                     # Quick shader interface reference
@@ -533,6 +553,11 @@ The main bottleneck is PNG export — `LoadImageFromTexture` + `ExportImage` per
 - **Rutt-Etra** — adapted from [DdXfRj](https://www.shadertoy.com/view/DdXfRj) on Shadertoy
 - **VCR Distortion** — adapted from [ldjGzV](https://www.shadertoy.com/view/ldjGzV) by Tsoding on Shadertoy
 - **Pixel sorting with vector field** — ported from [3dXSzs](https://www.shadertoy.com/view/3dXSzs) by ciphrd on Shadertoy (MIT license)
+- **Radial Spectrum** — adapted from [4stfR8](https://www.shadertoy.com/view/4stfR8) on Shadertoy
+- **Plasma Globe** — adapted from [XsjXRm](https://www.shadertoy.com/view/XsjXRm) by nimitz on Shadertoy, via ArthurTent's [ShaderAmp fork](https://www.shadertoy.com/view/43GGDm) (CC BY-NC-SA 3.0)
+- **Discoteq** — adapted from [mlfBDX](https://www.shadertoy.com/view/mlfBDX) by wj on Shadertoy (CC BY-NC-SA 3.0)
+- **Chaolotus** — adapted from [wstXW2](https://www.shadertoy.com/view/wstXW2) on Shadertoy
+- **3D Audio Visualizer** — adapted from [Dtj3zW](https://www.shadertoy.com/view/Dtj3zW) by kishimisu on Shadertoy (CC BY-NC-SA 4.0)
 
 ## License
 

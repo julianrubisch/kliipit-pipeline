@@ -374,8 +374,20 @@ https://github.com/user-attachments/assets/e2f7dbee-363c-47f2-adba-1817c2f9f13b
 ### `shaders/showfreqs.frag` ([sample](samples/showfreqs.mp4))
 Frequency spectrum visualizer (bar graph). Displays FFT magnitude bins as vertical bars scrolling with time, similar to ffmpeg's `showfreqs` filter.
 
+
+
+https://github.com/user-attachments/assets/176aa17a-77ca-419e-9407-a076638a81cd
+
+
+
 ### `shaders/showwaves.frag` ([sample](samples/showwaves.mp4))
 Raw PCM waveform oscilloscope, similar to ffmpeg's `showwaves mode=line`. Uses `texture3` (waveform PCM data) to render the actual audio waveform shape — irregular and organic, not synthesized from frequency data. Vertical bars extend from center to amplitude with anti-aliased edges. Works well chained with post-processing shaders like `rutt_etra` or `domain_warp`.
+
+
+
+https://github.com/user-attachments/assets/28e414ec-ce6e-485e-b306-f0182cc86219
+
+
 
 ## Architecture notes
 
@@ -476,6 +488,12 @@ Timeline:
 The `:post` mode is key here — each overlay processes the overdrive output, and the fade envelope controls the dry/wet mix. At `mix=0` the overlay has no effect; at `mix=1` the effect is fully applied.
 
 **Buffer allocation:** Each layer gets its own ping-pong pair (`buf_a`/`buf_b`), plus one shared `composite_buf` and one `display_buf` (if any layer has a `_display.frag` companion).
+
+
+
+https://github.com/user-attachments/assets/2cb821b4-e082-4335-887f-9283261b4b9a
+
+
 
 ### Preview rendering
 

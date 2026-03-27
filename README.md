@@ -561,4 +561,24 @@ The main bottleneck is PNG export — `LoadImageFromTexture` + `ExportImage` per
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+The pipeline code (`pipeline.rb`) and original shaders are MIT — see [LICENSE](LICENSE).
+
+**Ported Shadertoy shaders have their own licenses** and are not covered by the MIT license:
+
+| Shader | License | Commercial use |
+|--------|---------|----------------|
+| `overdrive.frag` | MIT | Yes |
+| `glitch.frag` | MIT | Yes |
+| `domain_warp.frag` | MIT | Yes |
+| `showwaves.frag` | MIT | Yes |
+| `showfreqs.frag` | MIT | Yes |
+| `vfield_sort.frag` | MIT (ciphrd) | Yes |
+| `rutt_etra.frag` | CC BY-NC-SA 3.0 | No |
+| `vcr_distortion.frag` | CC BY-NC-SA 3.0 | No |
+| `radial_spectrum.frag` | CC BY-NC-SA 3.0 | No |
+| `plasma_globe.frag` | CC BY-NC-SA 3.0 (nimitz) | No |
+| `discoteq.frag` | CC BY-NC-SA 3.0 (wj) | No |
+| `chaolotus.frag` | CC BY-NC-SA 3.0 | No |
+| `audio_3d.frag` | CC BY-NC-SA 4.0 (kishimisu) | No |
+
+Shaders marked CC BY-NC-SA require attribution (included in each file's header) and prohibit commercial use. See the individual shader files for full license text and original author links.

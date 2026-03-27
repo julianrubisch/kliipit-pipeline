@@ -84,15 +84,14 @@ void main() {
     img *= scan;
 
     // --- Digital noise blocks on treble spikes ---
-    float noiseBlockPx = 8.0 + 16.0 * hash(glitchTime * 0.3);
+    float noiseBlockPx = 3.0 + 5.0 * hash(glitchTime * 0.3);
     vec2 noiseBlock = floor(gl_FragCoord.xy / noiseBlockPx);
     float noiseVal = hash2(noiseBlock + glitchTime);
-    float noiseThreshold = 1.0 - treble * 0.2;
+    float noiseThreshold = 1.0 - treble * 0.1;
     if (noiseVal > noiseThreshold) {
         vec3 noiseColor = vec3(hash2(noiseBlock + glitchTime + 1.0));
-        // Tint noise blocks with rain-direction color
         noiseColor *= vec3(0.8 + 0.4 * rainDir.x, 1.0, 0.8 - 0.4 * rainDir.x);
-        img = mix(img, noiseColor, 0.8);
+        img = mix(img, noiseColor, 0.25);
     }
 
     // --- Color quantization on bass (bit crush) ---

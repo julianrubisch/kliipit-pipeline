@@ -2,12 +2,13 @@
 
 module KliipitPipeline
   module Encoder
-    def self.mux(frame_dir:, output_path:, audio_path:, fps:, start_offset: 0.0)
+    def self.open_pipe(output_path:, audio_path:, fps:, width:, height:, start_offset: 0.0)
       cmd = [
         "ffmpeg", "-y", "-v", "warning",
-        "-framerate", fps.to_s,
-        "-start_number", "0",
-        "-i", File.join(frame_dir, "%05d.png")
+        "-f", "rawvideo", "-pix_fmt", "rgba",
+        "-s", "#{width}x#{height}",
+        "-r", fps.to_s,
+        "-i", "-"
       ]
       cmd += ["-ss", start_offset.to_s] if start_offset > 0
       cmd += [
@@ -16,7 +17,7 @@ module KliipitPipeline
         "-c:a", "aac", "-b:a", "256k",
         "-shortest", output_path
       ]
-      system(*cmd, exception: true)
+      IO.popen(cmd, "wb")
     end
   end
 end

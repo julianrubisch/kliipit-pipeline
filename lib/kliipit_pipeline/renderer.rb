@@ -23,13 +23,42 @@ module KliipitPipeline
       self
     end
 
-    def render_frames(frame_range, frame_dir, fps:)
+    def render_frames(frame_range, output, fps:)
+      init_blend_buffers!
+
+      frame_bytes = @width * @height * 4
+      render_start = frame_range.first.to_f / fps
+
+      frame_range.each_with_index do |i, idx|
+        time = i.to_f / fps
+        layer_time = time - render_start
+        render_len = frame_range.size.to_f / fps
+        time_packed = [time].pack("f")
+
+        render_composite_frame(time_packed, layer_time, render_len)
+
+        img = LoadImageFromTexture(@composite_buf[:texture])
+        ImageFlipVertical(img)
+
+        case output
+        when IO
+          output.write(img[:data].read_bytes(frame_bytes))
+        when String
+          ExportImage(img, File.join(output, format("%05d.png", idx)))
+        end
+
+        UnloadImage(img)
+        yield idx if block_given?
+      end
+    end
+
+    private
+
+    def init_blend_buffers!
       src_rect = Rectangle.create(0, 0, @image_tex[:width], @image_tex[:height])
       dst_rect = Rectangle.create(0, 0, @width, @height)
-      rt_src_rect = Rectangle.create(0, 0, @width, -@height)
       origin = Vector2.create(0, 0)
 
-      # Initialize ping-pong buffers with source image for :blend layers
       @layers.each do |layer|
         next unless layer.mode == :blend
         [layer.buf_a, layer.buf_b].each do |buf|
@@ -41,82 +70,75 @@ module KliipitPipeline
         layer.current_buf = layer.buf_a
         layer.prev_buf = layer.buf_b
       end
+    end
 
-      render_start = frame_range.first.to_f / fps
+    def render_composite_frame(time_packed, layer_time, render_len)
+      src_rect = Rectangle.create(0, 0, @image_tex[:width], @image_tex[:height])
+      dst_rect = Rectangle.create(0, 0, @width, @height)
+      rt_src_rect = Rectangle.create(0, 0, @width, -@height)
+      origin = Vector2.create(0, 0)
 
-      frame_range.each_with_index do |i, idx|
-        time = i.to_f / fps
-        layer_time = time - render_start
-        render_len = frame_range.size.to_f / fps
-        time_packed = [time].pack("f")
+      BeginTextureMode(@composite_buf)
+      ClearBackground(BLACK)
+      EndTextureMode()
 
-        BeginTextureMode(@composite_buf)
+      @layers.each do |layer|
+        next unless layer.active_at?(layer_time, render_len)
+        mix = layer.mix_at(layer_time, render_len)
+        mix_packed = [mix].pack("f")
+        ps = layer.state
+
+        SetShaderValue(ps[:shader], ps[:loc_time], time_packed, SHADER_UNIFORM_FLOAT)
+        SetShaderValue(ps[:shader], ps[:loc_mix], mix_packed, SHADER_UNIFORM_FLOAT) if ps[:loc_mix] >= 0
+
+        BeginTextureMode(layer.current_buf)
         ClearBackground(BLACK)
+        BeginShaderMode(ps[:shader])
+        SetShaderValueTexture(ps[:shader], ps[:loc_tex1], @audio_tex)
+        SetShaderValueTexture(ps[:shader], ps[:loc_tex3], @waveform_tex) if ps[:loc_tex3] >= 0
+        case layer.mode
+        when :blend
+          SetShaderValueTexture(ps[:shader], ps[:loc_tex2], layer.prev_buf[:texture]) if ps[:loc_tex2] >= 0
+          DrawTexturePro(@image_tex, src_rect, dst_rect, origin, 0, WHITE)
+        when :post
+          SetShaderValueTexture(ps[:shader], ps[:loc_tex2], @image_tex) if ps[:loc_tex2] >= 0
+          DrawTextureRec(@composite_buf[:texture], rt_src_rect, origin, WHITE)
+        end
+        EndShaderMode()
         EndTextureMode()
 
-        @layers.each do |layer|
-          next unless layer.active_at?(layer_time, render_len)
-          mix = layer.mix_at(layer_time, render_len)
-          mix_packed = [mix].pack("f")
-          ps = layer.state
-
-          SetShaderValue(ps[:shader], ps[:loc_time], time_packed, SHADER_UNIFORM_FLOAT)
-          SetShaderValue(ps[:shader], ps[:loc_mix], mix_packed, SHADER_UNIFORM_FLOAT) if ps[:loc_mix] >= 0
-
-          BeginTextureMode(layer.current_buf)
+        output = layer.current_buf
+        if layer.has_display
+          dp = layer.display
+          SetShaderValue(dp[:shader], dp[:loc_time], time_packed, SHADER_UNIFORM_FLOAT)
+          SetShaderValue(dp[:shader], dp[:loc_mix], mix_packed, SHADER_UNIFORM_FLOAT) if dp[:loc_mix] >= 0
+          BeginTextureMode(@display_buf)
           ClearBackground(BLACK)
-          BeginShaderMode(ps[:shader])
-          SetShaderValueTexture(ps[:shader], ps[:loc_tex1], @audio_tex)
-          SetShaderValueTexture(ps[:shader], ps[:loc_tex3], @waveform_tex) if ps[:loc_tex3] >= 0
-          case layer.mode
-          when :blend
-            SetShaderValueTexture(ps[:shader], ps[:loc_tex2], layer.prev_buf[:texture]) if ps[:loc_tex2] >= 0
-            DrawTexturePro(@image_tex, src_rect, dst_rect, origin, 0, WHITE)
-          when :post
-            SetShaderValueTexture(ps[:shader], ps[:loc_tex2], @image_tex) if ps[:loc_tex2] >= 0
-            DrawTextureRec(@composite_buf[:texture], rt_src_rect, origin, WHITE)
-          end
+          BeginShaderMode(dp[:shader])
+          SetShaderValueTexture(dp[:shader], dp[:loc_tex1], @audio_tex)
+          SetShaderValueTexture(dp[:shader], dp[:loc_tex2], layer.current_buf[:texture]) if dp[:loc_tex2] >= 0
+          SetShaderValueTexture(dp[:shader], dp[:loc_tex3], @waveform_tex) if dp[:loc_tex3] >= 0
+          DrawTexturePro(@image_tex, src_rect, dst_rect, origin, 0, WHITE)
           EndShaderMode()
           EndTextureMode()
-
-          output = layer.current_buf
-          if layer.has_display
-            dp = layer.display
-            SetShaderValue(dp[:shader], dp[:loc_time], time_packed, SHADER_UNIFORM_FLOAT)
-            SetShaderValue(dp[:shader], dp[:loc_mix], mix_packed, SHADER_UNIFORM_FLOAT) if dp[:loc_mix] >= 0
-            BeginTextureMode(@display_buf)
-            ClearBackground(BLACK)
-            BeginShaderMode(dp[:shader])
-            SetShaderValueTexture(dp[:shader], dp[:loc_tex1], @audio_tex)
-            SetShaderValueTexture(dp[:shader], dp[:loc_tex2], layer.current_buf[:texture]) if dp[:loc_tex2] >= 0
-            SetShaderValueTexture(dp[:shader], dp[:loc_tex3], @waveform_tex) if dp[:loc_tex3] >= 0
-            DrawTexturePro(@image_tex, src_rect, dst_rect, origin, 0, WHITE)
-            EndShaderMode()
-            EndTextureMode()
-            output = @display_buf
-          end
-
-          alpha = (mix * 255).round.clamp(0, 255)
-          tint = Color.new
-          tint[:r] = 255
-          tint[:g] = 255
-          tint[:b] = 255
-          tint[:a] = alpha
-          BeginTextureMode(@composite_buf)
-          DrawTextureRec(output[:texture], rt_src_rect, origin, tint)
-          EndTextureMode()
-
-          layer.swap_buffers! if layer.mode == :blend
+          output = @display_buf
         end
 
-        img = LoadImageFromTexture(@composite_buf[:texture])
-        ImageFlipVertical(img)
-        ExportImage(img, File.join(frame_dir, format("%05d.png", idx)))
-        UnloadImage(img)
+        alpha = (mix * 255).round.clamp(0, 255)
+        tint = Color.new
+        tint[:r] = 255
+        tint[:g] = 255
+        tint[:b] = 255
+        tint[:a] = alpha
+        BeginTextureMode(@composite_buf)
+        DrawTextureRec(output[:texture], rt_src_rect, origin, tint)
+        EndTextureMode()
 
-        yield idx if block_given?
+        layer.swap_buffers! if layer.mode == :blend
       end
     end
+
+    public
 
     def cleanup!
       @layers.each do |layer|

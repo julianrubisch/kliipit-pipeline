@@ -1,8 +1,5 @@
 # frozen_string_literal: true
 
-require "tmpdir"
-require "fileutils"
-
 module KliipitPipeline
   class Pipeline
     def initialize(
@@ -108,42 +105,37 @@ module KliipitPipeline
 
       log "Loudest moment: #{loudest_time.round(2)}s — preview: #{window[:start].round(2)}s–#{(window[:start] + AudioAnalyzer::PREVIEW_DURATION).round(2)}s"
 
-      frame_dir = Dir.mktmpdir("kp-preview")
       frame_range = window[:start_frame]...window[:end_frame]
       total = frame_range.size
 
       log "Rendering #{total}-frame preview..."
-      @renderer.render_frames(frame_range, frame_dir, fps: @fps) do |idx|
+      render_piped(frame_range, preview_path, start_offset: window[:start]) do |idx|
         @progress&.call(:progress, idx, total)
       end
-
-      Encoder.mux(
-        frame_dir: frame_dir, output_path: preview_path,
-        audio_path: @audio_path, fps: @fps,
-        start_offset: window[:start]
-      )
-      FileUtils.rm_rf(frame_dir)
       log "Preview: #{preview_path}"
     end
 
     def render_full!
       frame_range = compute_frame_range
       total = frame_range.size
-      frame_dir = Dir.mktmpdir("kp-frames")
+      start_offset = frame_range.first.to_f / @fps
 
       log "Rendering #{total} frames..."
-      @renderer.render_frames(frame_range, frame_dir, fps: @fps) do |idx|
+      render_piped(frame_range, @output_path, start_offset: start_offset) do |idx|
         @progress&.call(:progress, idx, total)
       end
+      log "Done: #{@output_path}"
+    end
 
-      start_offset = frame_range.first.to_f / @fps
-      Encoder.mux(
-        frame_dir: frame_dir, output_path: @output_path,
-        audio_path: @audio_path, fps: @fps,
+    def render_piped(frame_range, output_path, start_offset: 0.0, &progress)
+      pipe = Encoder.open_pipe(
+        output_path: output_path, audio_path: @audio_path,
+        fps: @fps, width: @width, height: @height,
         start_offset: start_offset
       )
-      FileUtils.rm_rf(frame_dir)
-      log "Done: #{@output_path}"
+      @renderer.render_frames(frame_range, pipe, fps: @fps, &progress)
+    ensure
+      pipe&.close
     end
   end
 end

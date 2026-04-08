@@ -145,13 +145,12 @@ fn compute_spectrogram(
         .map(|i| 0.5 * (1.0 - (2.0 * PI * i as f64 / fft_size as f64).cos()) as f32)
         .collect();
 
-    // Compute columns in parallel
-    let columns: Vec<Vec<u8>> = (0..num_columns)
+    // Pass 1: compute raw magnitudes per column in parallel
+    let mag_columns: Vec<Vec<f32>> = (0..num_columns)
         .into_par_iter()
         .map(|col| {
             let center = col * hop_size;
 
-            // Build windowed frame
             let mut buffer: Vec<Complex<f32>> = (0..fft_size)
                 .map(|i| {
                     let idx = center as isize + i as isize - fft_size as isize / 2;
@@ -164,48 +163,52 @@ fn compute_spectrogram(
                 })
                 .collect();
 
-            // FFT (each thread creates its own planner — cheap for repeated sizes)
             let mut planner = FftPlanner::new();
             let fft = planner.plan_fft_forward(fft_size);
             fft.process(&mut buffer);
 
-            // Magnitude spectrum (first freq_bins bins)
-            let magnitudes: Vec<f32> = buffer[..freq_bins]
-                .iter()
-                .map(|c| c.norm())
-                .collect();
-
-            // Convert to dB and scale to 0-255
-            let max_mag = magnitudes.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-            let floor = if max_mag > 0.0 {
-                20.0 * max_mag.log10() - dynamic_range_db as f32
-            } else {
-                -dynamic_range_db as f32
-            };
-
-            magnitudes
-                .iter()
-                .rev() // low frequencies at bottom
-                .map(|&m| {
-                    let db = if m > 0.0 { 20.0 * m.log10() } else { floor };
-                    let normalized = (db - floor) / dynamic_range_db as f32;
-                    (normalized.clamp(0.0, 1.0) * 255.0) as u8
-                })
-                .collect()
+            buffer[..freq_bins].iter().map(|c| c.norm()).collect()
         })
         .collect();
 
-    // Scatter into row-major pixel buffer
+    // Find global max magnitude across entire spectrogram
+    let global_max: f32 = mag_columns
+        .par_iter()
+        .map(|col| col.iter().cloned().fold(f32::NEG_INFINITY, f32::max))
+        .reduce(|| f32::NEG_INFINITY, f32::max);
+
+    let floor = if global_max > 0.0 {
+        20.0 * global_max.log10() - dynamic_range_db as f32
+    } else {
+        -dynamic_range_db as f32
+    };
+
+    // Pass 2: normalize to dB using global max, convert to pixels
     let height = freq_bins;
     let width = num_columns;
     let mut pixels = vec![0u8; width * height];
-    for (col, col_data) in columns.iter().enumerate() {
-        for (row, &byte) in col_data.iter().enumerate() {
+
+    mag_columns.par_iter().enumerate().for_each(|(col, magnitudes)| {
+        let col_pixels: Vec<u8> = magnitudes
+            .iter()
+            .rev() // low frequencies at bottom
+            .map(|&m| {
+                let db = if m > 0.0 { 20.0 * m.log10() } else { floor };
+                let normalized = (db - floor) / dynamic_range_db as f32;
+                (normalized.clamp(0.0, 1.0) * 255.0) as u8
+            })
+            .collect();
+
+        for (row, &byte) in col_pixels.iter().enumerate() {
             if row < height && col < width {
-                pixels[row * width + col] = byte;
+                // SAFETY: each column writes to unique positions (different col index)
+                unsafe {
+                    let ptr = pixels.as_ptr() as *mut u8;
+                    *ptr.add(row * width + col) = byte;
+                }
             }
         }
-    }
+    });
 
     let result = RArray::new();
     result.push(RString::from_slice(&pixels)).unwrap();

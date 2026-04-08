@@ -1,0 +1,16 @@
+[package]
+name = "kliipit_pipeline"
+version = "0.1.0"
+edition = "2021"
+authors = ["Julian Rubisch <julian@julianrubisch.at>"]
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+magnus = { version = "0.6.2" }
+rayon = "1.10"
+symphonia = { version = "0.5", features = ["wav", "flac", "mp3", "ogg", "vorbis", "aac", "pcm", "isomp4"] }
+rustfft = "6.2"

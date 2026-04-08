@@ -1,0 +1,5 @@
+layers:
+  - shader: shaders/domain_warp.frag
+    mode: blend
+  - shader: shaders/vcr_distortion.frag
+    mode: post

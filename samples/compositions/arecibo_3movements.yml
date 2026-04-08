@@ -1,0 +1,28 @@
+layers:
+  # Movement I: domain_warp + vcr_distortion (0s – 137s, fade out over 5s)
+  - shader: shaders/domain_warp.frag
+    mode: blend
+    end: 137.0
+    fade_out: 5.0
+  - shader: shaders/vcr_distortion.frag
+    mode: post
+    end: 137.0
+    fade_out: 5.0
+
+  # Movement II: luma_displace (127s – 352s, fade in/out over 5s)
+  - shader: shaders/luma_displace.frag
+    mode: blend
+    start: 127.0
+    end: 352.0
+    fade_in: 5.0
+    fade_out: 5.0
+
+  # Movement III: luma_displace + glitch (342s – end, fade in over 5s)
+  - shader: shaders/luma_displace.frag
+    mode: blend
+    start: 342.0
+    fade_in: 5.0
+  - shader: shaders/glitch.frag
+    mode: post
+    start: 342.0
+    fade_in: 5.0
